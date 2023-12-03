@@ -175,7 +175,9 @@ func saveToDB(dbName string, data []record) error {
 		exchange    DECIMAL(10,5),
 		commission  DECIMAL(10,2),
 		cashback    DECIMAL(10,2),
-		rest        DECIMAL(10,2)
+		rest        DECIMAL(10,2),
+
+		UNIQUE (created_at, title, amount)
 	)`); err != nil {
 		return err
 	}
@@ -205,8 +207,10 @@ func saveToDB(dbName string, data []record) error {
 			:cashback / 100.0,
 			:rest / 100.0
 		)
+		ON CONFLICT(created_at, title, amount) DO NOTHING
 	`
 	for _, rec := range data {
+		// insert record
 		if _, err := db.NamedExec(sqlQuery, rec); err != nil {
 			return err
 		}
