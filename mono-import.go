@@ -14,6 +14,9 @@ import (
 	"os"
 	"strconv"
 	"time"
+
+	"github.com/jmoiron/sqlx"
+	_ "github.com/mattn/go-sqlite3"
 )
 
 const (
@@ -43,8 +46,12 @@ func main() {
 
 	allData := readFiles(flag.Args())
 
-	for _, row := range allData {
-		fmt.Printf("%#v\n", row)
+	// for _, row := range allData {
+	// 	fmt.Printf("%#v\n", row)
+	// }
+
+	if err := saveToDB(dbName, allData); err != nil {
+		log.Fatalf("Error saving to DB: %s", err)
 	}
 }
 
@@ -142,4 +149,68 @@ func parseAsInt(s string, coef int) int {
 		log.Fatalf("Error parsing %s to float: %s", s, err)
 	}
 	return int(v * float64(coef))
+}
+
+func saveToDB(dbName string, data []record) error {
+	db, err := sqlx.Open("sqlite3", dbName)
+	if err != nil {
+		return err
+	}
+
+	defer func() {
+		if err := db.Close(); err != nil {
+			log.Fatalf("Error closing DB: %s", err)
+		}
+	}()
+
+	// create table
+	if _, err := db.Exec(`
+	CREATE TABLE IF NOT EXISTS mono (
+		created_at  DATETIME,
+		title       TEXT,
+		mcc         INTEGER,
+		amount      DECIMAL(10,2),
+		amount_orig DECIMAL(10,2),
+		currency    TEXT,
+		exchange    DECIMAL(10,5),
+		commission  DECIMAL(10,2),
+		cashback    DECIMAL(10,2),
+		rest        DECIMAL(10,2)
+	)`); err != nil {
+		return err
+	}
+
+	// insert data
+	sqlQuery := `
+		INSERT INTO mono (
+			created_at,
+			title,
+			mcc,
+			amount,
+			amount_orig,
+			currency,
+			exchange,
+			commission,
+			cashback,
+			rest
+		) VALUES (
+			:created_at,
+			:title,
+			:mcc,
+			:amount / 100.0,
+			:amount_orig / 100.0,
+			:currency,
+			:exchange / 100000.0,
+			:commission / 100.0,
+			:cashback / 100.0,
+			:rest / 100.0
+		)
+	`
+	for _, rec := range data {
+		if _, err := db.NamedExec(sqlQuery, rec); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
