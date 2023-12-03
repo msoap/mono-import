@@ -46,13 +46,12 @@ func main() {
 
 	allData := readFiles(flag.Args())
 
-	// for _, row := range allData {
-	// 	fmt.Printf("%#v\n", row)
-	// }
-
-	if err := saveToDB(dbName, allData); err != nil {
+	n, err := saveToDB(dbName, allData)
+	if err != nil {
 		log.Fatalf("Error saving to DB: %s", err)
 	}
+
+	fmt.Printf("Imported %d (from %d) records\n", n, len(allData))
 }
 
 func readFiles(files []string) []record {
@@ -151,10 +150,10 @@ func parseAsInt(s string, coef int) int {
 	return int(v * float64(coef))
 }
 
-func saveToDB(dbName string, data []record) error {
+func saveToDB(dbName string, data []record) (int, error) {
 	db, err := sqlx.Open("sqlite3", dbName)
 	if err != nil {
-		return err
+		return 0, err
 	}
 
 	defer func() {
@@ -179,7 +178,7 @@ func saveToDB(dbName string, data []record) error {
 
 		UNIQUE (created_at, title, amount)
 	)`); err != nil {
-		return err
+		return 0, err
 	}
 
 	// insert data
@@ -209,12 +208,19 @@ func saveToDB(dbName string, data []record) error {
 		)
 		ON CONFLICT(created_at, title, amount) DO NOTHING
 	`
+	cnt := 0
 	for _, rec := range data {
 		// insert record
-		if _, err := db.NamedExec(sqlQuery, rec); err != nil {
-			return err
+		if res, err := db.NamedExec(sqlQuery, rec); err != nil {
+			return 0, err
+		} else {
+			if n, err := res.RowsAffected(); err != nil {
+				return 0, err
+			} else {
+				cnt += int(n)
+			}
 		}
 	}
 
-	return nil
+	return cnt, nil
 }
