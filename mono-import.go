@@ -48,7 +48,7 @@ func main() {
 
 	n, err := saveToDB(dbName, allData)
 	if err != nil {
-		log.Fatalf("Error saving to DB: %s", err)
+		log.Fatalf("Error saving to DB %s: %s", dbName, err)
 	}
 
 	fmt.Printf("Imported %d (from %d) records\n", n, len(allData))
@@ -64,19 +64,23 @@ func readFiles(files []string) []record {
 		// read CSV file
 		data, err := readCSV(filename)
 		if err != nil {
-			log.Fatalf("Error reading CSV file: %s", err)
+			log.Fatalf("Error reading CSV file %s: %s", filename, err)
+		}
+		if len(data) <= 1 {
+			log.Printf("Empty CSV file: %s", filename)
+			continue
 		}
 
 		// remove header
 		data = data[1:]
 
-		for _, row := range data {
+		for i, row := range data {
 			rec := parseRecord(row)
 			allData = append(allData, rec)
 
 			key := rec.CreatedAt.Format(csvDateFormat) + rec.Title + strconv.Itoa(rec.Amount)
 			if dupl[key] {
-				log.Fatalf("Duplicate record: %#v", rec)
+				log.Fatalf("Duplicate record %d (%s): %#v", i, filename, rec)
 			}
 			dupl[key] = true
 		}
@@ -88,7 +92,7 @@ func readFiles(files []string) []record {
 func readCSV(filename string) ([][]string, error) {
 	f, err := os.Open(filename)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("Error opening file %s: %s", filename, err)
 	}
 	defer f.Close()
 
@@ -153,7 +157,7 @@ func parseAsInt(s string, coef int) int {
 func saveToDB(dbName string, data []record) (int, error) {
 	db, err := sqlx.Open("sqlite3", dbName)
 	if err != nil {
-		return 0, err
+		return 0, fmt.Errorf("Error opening DB %s: %s", dbName, err)
 	}
 
 	defer func() {
@@ -178,7 +182,7 @@ func saveToDB(dbName string, data []record) (int, error) {
 
 		UNIQUE (created_at, title, amount)
 	)`); err != nil {
-		return 0, err
+		return 0, fmt.Errorf("Error creating table: %s", err)
 	}
 
 	// insert data
@@ -211,15 +215,17 @@ func saveToDB(dbName string, data []record) (int, error) {
 	cnt := 0
 	for _, rec := range data {
 		// insert record
-		if res, err := db.NamedExec(sqlQuery, rec); err != nil {
-			return 0, err
-		} else {
-			if n, err := res.RowsAffected(); err != nil {
-				return 0, err
-			} else {
-				cnt += int(n)
-			}
+		res, err := db.NamedExec(sqlQuery, rec)
+		if err != nil {
+			return 0, fmt.Errorf("Error inserting record %#v: %s", rec, err)
 		}
+
+		n, err := res.RowsAffected()
+		if err != nil {
+			return 0, fmt.Errorf("Error getting rows affected: %s", err)
+		}
+
+		cnt += int(n)
 	}
 
 	return cnt, nil
