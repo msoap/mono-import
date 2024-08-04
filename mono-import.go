@@ -71,10 +71,15 @@ func readFiles(files []string) []record {
 			continue
 		}
 
+		recLen := len(data[0])
 		// remove header
 		data = data[1:]
 
 		for i, row := range data {
+			if len(row) < recLen {
+				continue
+			}
+
 			rec := parseRecord(row)
 			allData = append(allData, rec)
 
@@ -96,7 +101,10 @@ func readCSV(filename string) ([][]string, error) {
 	}
 	defer f.Close()
 
-	return csv.NewReader(f).ReadAll()
+	csvr := csv.NewReader(f)
+	csvr.FieldsPerRecord = -1 // variable number of fields
+
+	return csvr.ReadAll()
 }
 
 func parseRecord(row []string) record {
